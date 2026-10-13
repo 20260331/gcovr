@@ -23,9 +23,11 @@ from typing import Iterable, Literal
 from ...data_model.container import CoverageContainer
 from ...data_model.coverage import CoverageDiff, FileCoverage
 from ...data_model.stats import CoverageStat
+from ...data_model.weighted_stats import WeightedCoverageStat, WeightedSummarizedStats
 from ...exceptions import SanityCheckError
 from ...options import Options
 from ...utils import force_unix_separator, open_text_for_writing
+from ...weights import get_weight_profile, weighted_stats
 
 # Widths of the various columns
 COL_FILE_WIDTH = 40
@@ -36,6 +38,19 @@ COL_DIFF_STATE_WIDTH = 20
 SEPARATOR = "   "
 
 
+def _get_weighted_stats(
+    covdata: CoverageContainer, options: Options
+) -> WeightedSummarizedStats | None:
+    """Get the weighted overall statistics if a weight profile is configured."""
+    profile = get_weight_profile(options)
+    if profile is None:
+        return None
+    weighted = getattr(options, "weighted_stats_data", None)
+    if weighted is None:
+        weighted = weighted_stats(covdata, profile, options.root_filter)
+    return weighted
+
+
 def write_report(
     covdata: CoverageContainer, output_file: str, options: Options
 ) -> None:
@@ -44,6 +59,7 @@ def write_report(
         options.txt_metrics or ["line"]
     )
     single_metric = len(all_metrics) == 1
+    weighted_overall = _get_weighted_stats(covdata, options)
 
     diff_report = covdata.is_compare_info_available()
     if diff_report and all_metrics != ["line"]:
@@ -150,6 +166,26 @@ def write_report(
             fh.write(
                 "TOTAL".ljust(COL_FILE_WIDTH) + SEPARATOR.join(metrics_as_txt) + "\n"
             )
+            if weighted_overall is not None:
+                weighted_metrics = dict[
+                    Literal["line", "branch", "condition", "decision"],
+                    WeightedCoverageStat,
+                ](
+                    {
+                        "line": weighted_overall.line,
+                        "branch": weighted_overall.branch,
+                        "condition": weighted_overall.condition,
+                        "decision": weighted_overall.decision.to_coverage_stat,
+                    }
+                )
+                fh.write(
+                    "WEIGHTED TOTAL".ljust(COL_FILE_WIDTH)
+                    + SEPARATOR.join(
+                        _format_weighted_line(weighted_metrics[metric])
+                        for metric in all_metrics
+                    )
+                    + "\n"
+                )
             fh.write("-" * line_width + "\n")
 
 
@@ -179,6 +215,7 @@ def write_summary_report(
                             f"  {filecov.presentable_filename(options.root_filter)}\n"
                         )
         else:
+            weighted_overall = _get_weighted_stats(covdata, options)
 
             def print_stat(name: str, stat: CoverageStat) -> None:
                 percent = stat.percent_or(0.0)
@@ -186,15 +223,36 @@ def write_summary_report(
                 total = stat.total
                 fh.write(f"{name}: {percent:0.1f}% ({covered} out of {total})\n")
 
+            def print_weighted_stat(name: str, stat: WeightedCoverageStat) -> None:
+                percent = stat.percent_or(0.0)
+                fh.write(
+                    f"weighted {name}: {percent:0.1f}% "
+                    f"({stat.covered:g} out of {stat.total:g})\n"
+                )
+
             print_stat("lines", covdata.line_coverage())
+            if weighted_overall is not None:
+                print_weighted_stat("lines", weighted_overall.line)
             print_stat("functions", covdata.function_coverage())
+            if weighted_overall is not None:
+                print_weighted_stat("functions", weighted_overall.function)
             print_stat("branches", covdata.branch_coverage())
+            if weighted_overall is not None:
+                print_weighted_stat("branches", weighted_overall.branch)
             if covdata.condition_coverage().total != 0:
                 print_stat("conditions", covdata.condition_coverage())
+                if weighted_overall is not None:
+                    print_weighted_stat("conditions", weighted_overall.condition)
             if options.show_decision:
                 print_stat("decisions", covdata.decision_coverage().to_coverage_stat)
+                if weighted_overall is not None:
+                    print_weighted_stat(
+                        "decisions", weighted_overall.decision.to_coverage_stat
+                    )
             if options.show_calls:
                 print_stat("calls", covdata.call_coverage())
+                if weighted_overall is not None:
+                    print_weighted_stat("calls", weighted_overall.call)
 
 
 def _diff_report_file(filecov: FileCoverage, root_filter: re.Pattern[str]) -> str:
@@ -316,6 +374,17 @@ def _format_line(stat: CoverageStat, uncovered_lines: str) -> str:
         line += SEPARATOR + uncovered_lines
 
     return line
+
+
+def _format_weighted_line(stat: WeightedCoverageStat) -> str:
+    """Format a weighted statistic with the same column layout as ``_format_line``."""
+    percent = "--" if stat.percent is None else str(int(stat.percent))
+    return (
+        f"{stat.total:g}".rjust(COL_TOTAL_COUNT_WIDTH)
+        + f"{stat.covered:g}".rjust(COL_COVERED_COUNT_WIDTH)
+        + percent.rjust(COL_PERCENTAGE_WIDTH - 1)
+        + "%"
+    )
 
 
 def _covered_lines_str(filecov: FileCoverage) -> str:

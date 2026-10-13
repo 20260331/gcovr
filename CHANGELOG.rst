@@ -37,6 +37,11 @@ New features and notable changes:
   :option:`--fail-under-decision` as synonyms, change the key for the configuration file. (:issue:`1293`)
 - Add support for multiple metrics in one text report and add support for condition coverage. (:issue:`1302`)
 - Warn if a option is used which has no effect when processing tracefiles. (:issue:`1307`)
+- Add experimental risk weighted coverage: weights can be loaded from a TOML file with
+  :option:`--add-weights` to change the contribution of obligations selected by metric, file
+  path and line ranges. The weighted statistics are shown in the text and JSON summary reports
+  and can be enforced with the new ``--fail-under-weighted-*`` quality gates (exit status 32).
+  Standard statistics and the default output remain unchanged.
 
 Bug fixes and small improvements:
 

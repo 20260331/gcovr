@@ -54,6 +54,8 @@ class BaseHandler:
             "exclude_filter",
             "trace_include_filter",
             "trace_exclude_filter",
+            "add_weights",
+            "weighted_stats_data",
         ]
         option_dict = {}
         for name in global_options + [

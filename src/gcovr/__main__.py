@@ -34,6 +34,7 @@ from .configuration import (
     parse_config_into_dict,
 )
 from .data_model.container import CoverageContainer
+from .data_model.weighted_stats import WeightedSummarizedStats
 from .exceptions import SanityCheckError
 from .filter import (
     AlwaysMatchFilter,
@@ -45,6 +46,7 @@ from .formats.gcov.workers import Workers
 from .logging import LOGGER, configure_logging, update_logging
 from .options import FilterOption
 from .version import __version__
+from .weights import WeightConfigError, get_weight_profile, weighted_stats
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -57,6 +59,7 @@ EXIT_LINE_NOK = 2
 EXIT_BRANCH_NOK = 4
 EXIT_CONDITION_OR_DECISION_NOK = 8
 EXIT_FUNCTION_NOK = 16
+EXIT_WEIGHTED_NOK = 32
 EXIT_READ_ERROR = 64
 EXIT_WRITE_ERROR = 128
 
@@ -70,15 +73,28 @@ def get_exit_code(
     threshold_branch: float,
     threshold_condition_or_decision: float,
     threshold_function: float,
+    weighted_stats_data: WeightedSummarizedStats | None = None,
+    threshold_weighted_line: float = 0.0,
+    threshold_weighted_branch: float = 0.0,
+    threshold_weighted_condition_or_decision: float = 0.0,
+    threshold_weighted_function: float = 0.0,
 ) -> int:
     """Fail depending on the coverage result."""
     exit_code = 0
+
+    weighted_threshold_active = weighted_stats_data is not None and (
+        threshold_weighted_line > 0.0
+        or threshold_weighted_branch > 0.0
+        or threshold_weighted_condition_or_decision > 0.0
+        or threshold_weighted_function > 0.0
+    )
 
     if (
         threshold_line > 0.0
         or threshold_branch > 0.0
         or threshold_condition_or_decision > 0.0
         or threshold_function > 0.0
+        or weighted_threshold_active
     ):
         line_nok = False
         if threshold_line > 0.0:
@@ -140,6 +156,62 @@ def get_exit_code(
                     threshold_function,
                 )
 
+        weighted_nok = False
+        if weighted_threshold_active and weighted_stats_data is not None:
+            if threshold_weighted_line > 0.0:
+                # If there are no weighted lines, mark as uncovered.
+                percent_lines = weighted_stats_data.line.percent_or(0.0)
+                if percent_lines < threshold_weighted_line:
+                    weighted_nok = True
+                    LOGGER.error(
+                        "Failed minimum weighted line coverage (got %s%%, minimum %s%%)",
+                        percent_lines,
+                        threshold_weighted_line,
+                    )
+
+            if threshold_weighted_branch > 0.0:
+                # Allow data with no branches.
+                percent_branches = weighted_stats_data.branch.percent_or(100.0)
+                if percent_branches < threshold_weighted_branch:
+                    weighted_nok = True
+                    LOGGER.error(
+                        "Failed minimum weighted branch coverage (got %s%%, minimum %s%%)",
+                        percent_branches,
+                        threshold_weighted_branch,
+                    )
+
+            if threshold_weighted_condition_or_decision > 0.0:
+                # Allow data with no conditions.
+                percent_condition = weighted_stats_data.condition.percent_or(100.0)
+                if percent_condition < threshold_weighted_condition_or_decision:
+                    weighted_nok = True
+                    LOGGER.error(
+                        "Failed minimum weighted condition coverage (got %s%%, minimum %s%%)",
+                        percent_condition,
+                        threshold_weighted_condition_or_decision,
+                    )
+
+                # Allow data with no decisions.
+                percent_decision = weighted_stats_data.decision.percent_or(100.0)
+                if percent_decision < threshold_weighted_condition_or_decision:
+                    weighted_nok = True
+                    LOGGER.error(
+                        "Failed minimum weighted decision coverage (got %s%%, minimum %s%%)",
+                        percent_decision,
+                        threshold_weighted_condition_or_decision,
+                    )
+
+            if threshold_weighted_function > 0.0:
+                # Allow data with no functions.
+                percent_function = weighted_stats_data.function.percent_or(100.0)
+                if percent_function < threshold_weighted_function:
+                    weighted_nok = True
+                    LOGGER.error(
+                        "Failed minimum weighted function coverage (got %s%%, minimum %s%%)",
+                        percent_function,
+                        threshold_weighted_function,
+                    )
+
         if line_nok:
             exit_code |= EXIT_LINE_NOK
         if branch_nok:
@@ -148,6 +220,8 @@ def get_exit_code(
             exit_code |= EXIT_CONDITION_OR_DECISION_NOK
         if function_nok:
             exit_code |= EXIT_FUNCTION_NOK
+        if weighted_nok:
+            exit_code |= EXIT_WEIGHTED_NOK
 
     return exit_code
 
@@ -301,6 +375,17 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         if options.show_decision and options.json_compare:
             msg = "Decision coverage in json compare mode is not supported."
             raise RuntimeError(msg)
+        if (
+            options.fail_under_weighted_line > 0.0
+            or options.fail_under_weighted_branch > 0.0
+            or options.fail_under_weighted_condition_or_decision > 0.0
+            or options.fail_under_weighted_function > 0.0
+        ) and not options.add_weights:
+            msg = (
+                "The weighted '--fail-under-weighted*' options require weights "
+                "loaded with '--add-weights'."
+            )
+            raise RuntimeError(msg)
         gcovr_formats.validate_options(options)
     except RuntimeError as exc:
         LOGGER.error("%s", str(exc))
@@ -397,6 +482,13 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         LOGGER.error("%s", e)
         return EXIT_CMDLINE_ERROR
 
+    # Load the optional risk weights, invalid files are command line errors.
+    try:
+        weight_profile = get_weight_profile(options)
+    except WeightConfigError as e:
+        LOGGER.error("%s", e)
+        return EXIT_CMDLINE_ERROR
+
     if options.show_decision:
         LOGGER.info(
             "Attention, the decision analysis is experimental. "
@@ -415,6 +507,14 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         )
         return EXIT_READ_ERROR
 
+    # The weighted statistics are shared by the report writers and the gate.
+    weighted_stats_data = (
+        weighted_stats(covdata, weight_profile, options.root_filter)
+        if weight_profile is not None
+        else None
+    )
+    options.weighted_stats_data = weighted_stats_data
+
     LOGGER.info("Writing coverage report...")
     try:
         gcovr_formats.write_reports(covdata, options)
@@ -430,6 +530,11 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         options.fail_under_branch,
         options.fail_under_condition_or_decision,
         options.fail_under_function,
+        weighted_stats_data,
+        options.fail_under_weighted_line,
+        options.fail_under_weighted_branch,
+        options.fail_under_weighted_condition_or_decision,
+        options.fail_under_weighted_function,
     )
 
 

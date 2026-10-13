@@ -18,6 +18,7 @@ This User Guide provides the following sections:
    guide/filters
    guide/configuration
    guide/exclusion-markers
+   guide/weighted-coverage
    guide/timestamps
 
 Related documents:

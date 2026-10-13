@@ -595,6 +595,77 @@ GCOVR_CONFIG_OPTIONS = [
         default=0.0,
     ),
     GcovrConfigOption(
+        "add_weights",
+        ["--add-weights"],
+        type=check_input_file,
+        metavar="WEIGHTS",
+        help=(
+            "Load risk weights from the given TOML file. "
+            "The weights change the contribution of the coverage obligations "
+            "to the weighted coverage statistics and to the weighted quality gates. "
+            "Can be specified multiple times, the rules are evaluated in the "
+            "given order. See the documentation for the file format."
+        ),
+        action="append",
+        default=[],
+    ),
+    GcovrConfigOption(
+        "fail_under_weighted_line",
+        ["--fail-under-weighted-line"],
+        type=check_percentage,
+        metavar="MIN",
+        help=(
+            "Exit with a status of 32 "
+            "if the total weighted line coverage is less than MIN. "
+            "This option requires weights loaded with '--add-weights'. "
+            "Can be ORed with the exit status of the other '--fail-under*' options."
+        ),
+        default=0.0,
+    ),
+    GcovrConfigOption(
+        "fail_under_weighted_branch",
+        ["--fail-under-weighted-branch"],
+        type=check_percentage,
+        metavar="MIN",
+        help=(
+            "Exit with a status of 32 "
+            "if the total weighted branch coverage is less than MIN. "
+            "This option requires weights loaded with '--add-weights'. "
+            "Can be ORed with the exit status of the other '--fail-under*' options."
+        ),
+        default=0.0,
+    ),
+    GcovrConfigOption(
+        "fail_under_weighted_condition_or_decision",
+        [
+            "--fail-under-weighted-condition-or-decision",
+            "--fail-under-weighted-condition",
+            "--fail-under-weighted-decision",
+        ],
+        type=check_percentage,
+        metavar="MIN",
+        help=(
+            "Exit with a status of 32 "
+            "if the total weighted condition or decision coverage is less than MIN. "
+            "This option requires weights loaded with '--add-weights'. "
+            "Can be ORed with the exit status of the other '--fail-under*' options."
+        ),
+        default=0.0,
+    ),
+    GcovrConfigOption(
+        "fail_under_weighted_function",
+        ["--fail-under-weighted-function"],
+        type=check_percentage,
+        metavar="MIN",
+        help=(
+            "Exit with a status of 32 "
+            "if the total weighted function coverage is less than MIN. "
+            "This option requires weights loaded with '--add-weights'. "
+            "Can be ORed with the exit status of the other '--fail-under*' options."
+        ),
+        default=0.0,
+    ),
+    GcovrConfigOption(
         "source_encoding",
         ["--source-encoding"],
         help=(

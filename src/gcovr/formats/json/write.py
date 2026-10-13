@@ -24,6 +24,7 @@ from ...data_model import version
 from ...data_model.container import CoverageContainer
 from ...options import Options
 from ...utils import force_unix_separator, write_json_output
+from ...weights import get_weight_profile, weighted_file_stats, weighted_stats
 
 SUMMARY_FORMAT_VERSION = (
     # BEGIN summary version
@@ -76,20 +77,32 @@ def write_summary_report(
         recurse=True,
     )
 
+    weight_profile = get_weight_profile(options)
+
     for filecov in filecov_list:
         filename = filecov.presentable_filename(options.root_filter)
         if options.json_base:
             filename = f"{options.json_base}/{filename}"
 
-        files.append(
-            {
-                "filename": filename,
-                **filecov.stats.serialize(None, options),
-            }
-        )
+        file_entry = {
+            "filename": filename,
+            **filecov.stats.serialize(None, options),
+        }
+        if weight_profile is not None:
+            file_entry.update(
+                weighted_file_stats(
+                    filecov, weight_profile, options.root_filter
+                ).serialize(None, options)
+            )
+        files.append(file_entry)
 
     # Footer & summary
     json_dict.update(covdata.stats.serialize(0.0, options))
+    if weight_profile is not None:
+        weighted_overall = getattr(
+            options, "weighted_stats_data", None
+        ) or weighted_stats(covdata, weight_profile, options.root_filter)
+        json_dict.update(weighted_overall.serialize(0.0, options))
 
     write_json_output(
         json_dict,
