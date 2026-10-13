@@ -20,6 +20,7 @@
 import re
 from typing import Iterable, Literal
 
+from ...branch_distribution import compute_branch_distribution
 from ...data_model.container import CoverageContainer
 from ...data_model.coverage import CoverageDiff, FileCoverage
 from ...data_model.stats import CoverageStat
@@ -195,6 +196,8 @@ def write_summary_report(
                 print_stat("decisions", covdata.decision_coverage().to_coverage_stat)
             if options.show_calls:
                 print_stat("calls", covdata.call_coverage())
+            if options.branch_distribution or options.fail_under_branch_skew:
+                fh.write(compute_branch_distribution(covdata, options).as_text() + "\n")
 
 
 def _diff_report_file(filecov: FileCoverage, root_filter: re.Pattern[str]) -> str:

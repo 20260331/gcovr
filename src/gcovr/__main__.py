@@ -26,6 +26,7 @@ from typing import Any
 
 # formats
 from . import formats as gcovr_formats
+from .branch_distribution import compute_branch_distribution
 from .configuration import (
     argument_parser_setup,
     config_entries_from_dict,
@@ -43,7 +44,7 @@ from .filter import (
 from .formats.gcov.read import GcovProgram
 from .formats.gcov.workers import Workers
 from .logging import LOGGER, configure_logging, update_logging
-from .options import FilterOption
+from .options import FilterOption, Options
 from .version import __version__
 
 if sys.version_info >= (3, 11):
@@ -57,6 +58,7 @@ EXIT_LINE_NOK = 2
 EXIT_BRANCH_NOK = 4
 EXIT_CONDITION_OR_DECISION_NOK = 8
 EXIT_FUNCTION_NOK = 16
+EXIT_BRANCH_SKEW_NOK = 32
 EXIT_READ_ERROR = 64
 EXIT_WRITE_ERROR = 128
 
@@ -430,7 +432,31 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         options.fail_under_branch,
         options.fail_under_condition_or_decision,
         options.fail_under_function,
-    )
+    ) | get_branch_skew_exit_code(covdata, options)
+
+
+def get_branch_skew_exit_code(
+    covdata: CoverageContainer,
+    options: Options,
+) -> int:
+    """Compute the branch distribution and return the skew gate exit code."""
+    if not options.branch_distribution and not options.fail_under_branch_skew:
+        return 0
+
+    report = compute_branch_distribution(covdata, options)
+    report.log_findings()
+
+    if options.fail_under_branch_skew and report.skewed:
+        LOGGER.error(
+            "Failed branch distribution skew threshold "
+            "(%d skewed branch point(s) with skew ratio >= %s and at least %d samples).",
+            len(report.skewed),
+            report.skew_ratio,
+            report.min_samples,
+        )
+        return EXIT_BRANCH_SKEW_NOK
+
+    return 0
 
 
 if __name__ == "__main__":

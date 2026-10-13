@@ -54,6 +54,10 @@ class BaseHandler:
             "exclude_filter",
             "trace_include_filter",
             "trace_exclude_filter",
+            "branch_distribution",
+            "branch_distribution_min_samples",
+            "branch_distribution_skew_ratio",
+            "fail_under_branch_skew",
         ]
         option_dict = {}
         for name in global_options + [

@@ -20,6 +20,7 @@
 import os
 from typing import Any
 
+from ...branch_distribution import compute_branch_distribution
 from ...data_model import version
 from ...data_model.container import CoverageContainer
 from ...options import Options
@@ -90,6 +91,11 @@ def write_summary_report(
 
     # Footer & summary
     json_dict.update(covdata.stats.serialize(0.0, options))
+
+    if options.branch_distribution or options.fail_under_branch_skew:
+        json_dict["branch_distribution"] = compute_branch_distribution(
+            covdata, options
+        ).serialize()
 
     write_json_output(
         json_dict,

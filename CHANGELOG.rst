@@ -36,6 +36,10 @@ New features and notable changes:
 - Add :option:`--fail-under-condition-or-decision` with :option:`--fail-under-condition` and
   :option:`--fail-under-decision` as synonyms, change the key for the configuration file. (:issue:`1293`)
 - Add support for multiple metrics in one text report and add support for condition coverage. (:issue:`1302`)
+- Add optional branch distribution diagnostics (:option:`--branch-distribution`) which aggregate the
+  target counts of each branch and report branch points with insufficient samples and with skewed
+  target counts. The skew threshold can be used as a gate with :option:`--fail-under-branch-skew`
+  (exit status 32).
 - Warn if a option is used which has no effect when processing tracefiles. (:issue:`1307`)
 
 Bug fixes and small improvements:

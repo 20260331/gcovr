@@ -46,6 +46,55 @@ def check_percentage(value: str) -> float:
     return x
 
 
+def check_positive_int(value: str) -> int:
+    r"""
+    Check that the value is a positive integer and return it.
+
+    >>> check_positive_int("10")
+    10
+    >>> check_positive_int("0")
+    Traceback (most recent call last):
+    argparse.ArgumentTypeError: 0 not in range [1, ...]
+    >>> check_positive_int("1.5")
+    Traceback (most recent call last):
+    argparse.ArgumentTypeError: 1.5 is not a positive integer
+    """
+    try:
+        x = int(value)
+    except ValueError:
+        msg = f"{value} is not a positive integer"
+        raise ArgumentTypeError(msg) from None
+
+    if x < 1:
+        msg = f"{value} not in range [1, ...]"
+        raise ArgumentTypeError(msg)
+    return x
+
+
+def check_ratio(value: str) -> float:
+    r"""
+    Check that the value is a ratio greater than or equal to 1.0 and return it.
+
+    >>> check_ratio("100")
+    100.0
+    >>> check_ratio("1.5")
+    1.5
+    >>> check_ratio("0.9")
+    Traceback (most recent call last):
+    argparse.ArgumentTypeError: 0.9 not in range [1.0, ...]
+    """
+    try:
+        x = float(value)
+    except ValueError:
+        msg = f"{value} is not a ratio"
+        raise ArgumentTypeError(msg) from None
+
+    if x < 1.0:
+        msg = f"{value} not in range [1.0, ...]"
+        raise ArgumentTypeError(msg)
+    return x
+
+
 def check_input_file(value: str, basedir: str | None = None) -> str:
     r"""Check that the input file is present. Return the full path."""
     if basedir is None:

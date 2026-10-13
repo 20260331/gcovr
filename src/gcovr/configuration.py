@@ -43,6 +43,8 @@ from .options import (
     OutputOrDefault,
     check_input_file,
     check_percentage,
+    check_positive_int,
+    check_ratio,
     relative_path,
 )
 from .timestamps import parse_timestamp
@@ -593,6 +595,67 @@ GCOVR_CONFIG_OPTIONS = [
             "'--fail-under-branch' and '--fail-under-condition-or-decision'."
         ),
         default=0.0,
+    ),
+    GcovrConfigOption(
+        "branch_distribution",
+        ["--branch-distribution"],
+        group="output_options",
+        help=(
+            "Report the distribution of the target counts of each branch "
+            "(all outgoing edges of one source block are aggregated). "
+            "Branch coverage alone cannot distinguish a branch which is "
+            "executed once on each side from a branch which is executed "
+            "thousands of times on one side but only once on the other. "
+            "Branch points with too few executions are reported as "
+            "'insufficient samples', branch points with enough samples "
+            "whose target counts differ by at least the "
+            "'--branch-distribution-skew-ratio' are reported as 'skewed'. "
+            "Shown in the text and JSON summary report."
+        ),
+        action="store_true",
+    ),
+    GcovrConfigOption(
+        "branch_distribution_min_samples",
+        ["--branch-distribution-min-samples"],
+        group="output_options",
+        type=check_positive_int,
+        metavar="SAMPLES",
+        help=(
+            "The minimum total number of executions of the targets of a "
+            "branch point so that its distribution is evaluated. "
+            "Branch points with fewer executions are reported as "
+            "'insufficient samples'. Default is {default!s}."
+        ),
+        default=10,
+    ),
+    GcovrConfigOption(
+        "branch_distribution_skew_ratio",
+        ["--branch-distribution-skew-ratio"],
+        group="output_options",
+        type=check_ratio,
+        metavar="RATIO",
+        help=(
+            "A branch point with enough samples (see "
+            "'--branch-distribution-min-samples') and all targets covered "
+            "is reported as 'skewed' if the ratio of the largest target "
+            "count to the smallest target count is at least RATIO. "
+            "Default is {default!s}."
+        ),
+        default=100.0,
+    ),
+    GcovrConfigOption(
+        "fail_under_branch_skew",
+        ["--fail-under-branch-skew"],
+        help=(
+            "Exit with a status of 32 if the branch distribution contains "
+            "a 'skewed' branch point according to the "
+            "'--branch-distribution-skew-ratio' and "
+            "'--branch-distribution-min-samples' options. "
+            "Branch points with insufficient samples or uncovered targets "
+            "do not trigger this exit status. "
+            "Can be ORed with the exit status of the other '--fail-under-*' options."
+        ),
+        action="store_true",
     ),
     GcovrConfigOption(
         "source_encoding",
