@@ -91,6 +91,19 @@ def write_summary_report(
     # Footer & summary
     json_dict.update(covdata.stats.serialize(0.0, options))
 
+    # Per-component summary. The files of a parent component are the union of
+    # the files of its children, a file is never counted twice.
+    component_groups = getattr(options, "component_groups", ())
+    if component_groups:
+        json_dict["components"] = [
+            {
+                "name": group.name,
+                "files": len(group.files),
+                **group.stats.serialize(0.0, options),
+            }
+            for group in component_groups
+        ]
+
     write_json_output(
         json_dict,
         pretty=options.json_summary_pretty,

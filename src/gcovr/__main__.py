@@ -26,6 +26,11 @@ from typing import Any
 
 # formats
 from . import formats as gcovr_formats
+from .component_groups import (
+    build_component_groups,
+    failing_component_thresholds,
+    resolve_component_files,
+)
 from .configuration import (
     argument_parser_setup,
     config_entries_from_dict,
@@ -391,8 +396,13 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
             "--exclude-lines-by-pattern", options.exclude_lines_by_pattern
         )
         options.exclude_branches_by_pattern = _setup_pattern(
-            "--exclude-branches-by-pattern", options.exclude_branches_by_pattern
+            "--exclude-branches-by-pattern",
+            options.exclude_branches_by_pattern,
         )
+
+        # Compile the filters of the component definitions and validate the
+        # component hierarchy.
+        options.component_groups = build_component_groups(options.components)
     except RuntimeError as e:
         LOGGER.error("%s", e)
         return EXIT_CMDLINE_ERROR
@@ -415,6 +425,10 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         )
         return EXIT_READ_ERROR
 
+    # Resolve the (possibly overlapping and hierarchical) file sets of the
+    # components before the reports are written.
+    resolve_component_files(options.component_groups, covdata)
+
     LOGGER.info("Writing coverage report...")
     try:
         gcovr_formats.write_reports(covdata, options)
@@ -424,13 +438,27 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         )
         return EXIT_WRITE_ERROR
 
-    return get_exit_code(
+    exit_code = get_exit_code(
         covdata,
         options.fail_under_line,
         options.fail_under_branch,
         options.fail_under_condition_or_decision,
         options.fail_under_function,
     )
+
+    # The per-component thresholds reuse the same exit status bits as the
+    # global --fail-under-* options.
+    failed_component_metrics = failing_component_thresholds(options.component_groups)
+    if "line" in failed_component_metrics:
+        exit_code |= EXIT_LINE_NOK
+    if "branch" in failed_component_metrics:
+        exit_code |= EXIT_BRANCH_NOK
+    if "condition_or_decision" in failed_component_metrics:
+        exit_code |= EXIT_CONDITION_OR_DECISION_NOK
+    if "function" in failed_component_metrics:
+        exit_code |= EXIT_FUNCTION_NOK
+
+    return exit_code
 
 
 if __name__ == "__main__":

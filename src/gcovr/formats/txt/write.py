@@ -180,11 +180,13 @@ def write_summary_report(
                         )
         else:
 
-            def print_stat(name: str, stat: CoverageStat) -> None:
+            def print_stat(name: str, stat: CoverageStat, indent: str = "") -> None:
                 percent = stat.percent_or(0.0)
                 covered = stat.covered
                 total = stat.total
-                fh.write(f"{name}: {percent:0.1f}% ({covered} out of {total})\n")
+                fh.write(
+                    f"{indent}{name}: {percent:0.1f}% ({covered} out of {total})\n"
+                )
 
             print_stat("lines", covdata.line_coverage())
             print_stat("functions", covdata.function_coverage())
@@ -195,6 +197,29 @@ def write_summary_report(
                 print_stat("decisions", covdata.decision_coverage().to_coverage_stat)
             if options.show_calls:
                 print_stat("calls", covdata.call_coverage())
+
+            component_groups = getattr(options, "component_groups", ())
+            if component_groups:
+                fh.write("\nComponent coverage:\n")
+                for group in component_groups:
+                    stats = group.stats
+                    fh.write(
+                        f"  {group.name} ({len(group.files)} "
+                        f"file{'s' if len(group.files) != 1 else ''}):\n"
+                    )
+                    print_stat("lines", stats.line, indent="    ")
+                    print_stat("functions", stats.function, indent="    ")
+                    print_stat("branches", stats.branch, indent="    ")
+                    if stats.condition.total != 0:
+                        print_stat("conditions", stats.condition, indent="    ")
+                    if options.show_decision:
+                        print_stat(
+                            "decisions",
+                            stats.decision.to_coverage_stat,
+                            indent="    ",
+                        )
+                    if options.show_calls:
+                        print_stat("calls", stats.call, indent="    ")
 
 
 def _diff_report_file(filecov: FileCoverage, root_filter: re.Pattern[str]) -> str:

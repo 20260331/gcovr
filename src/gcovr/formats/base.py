@@ -54,6 +54,7 @@ class BaseHandler:
             "exclude_filter",
             "trace_include_filter",
             "trace_exclude_filter",
+            "component_groups",
         ]
         option_dict = {}
         for name in global_options + [

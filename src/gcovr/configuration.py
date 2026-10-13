@@ -34,6 +34,7 @@ from . import formats
 from .exceptions import SanityCheckError
 from .logging import LOGGER
 from .options import (
+    ComponentOption,
     FilterOption,
     GcovrConfigOption,
     GcovrConfigOptionAction,
@@ -265,6 +266,9 @@ def _get_converter_function(
     """
     if isclass(option_type) and issubclass(option_type, FilterOption):
         return lambda value: FilterOption(value, basedir)
+
+    if isclass(option_type) and issubclass(option_type, ComponentOption):
+        return lambda value: ComponentOption(value, basedir)
 
     if option_type is check_input_file:
         return lambda value: check_input_file(value, basedir)
@@ -733,6 +737,33 @@ GCOVR_CONFIG_OPTIONS = [
         ),
         action="append",
         type=NonEmptyFilterOption,
+        default=[],
+    ),
+    GcovrConfigOption(
+        "components",
+        ["--component"],
+        config="component",
+        group="filter_options",
+        metavar="COMPONENT",
+        help=(
+            "Define a component group to view and enforce coverage independently "
+            "from the directory structure. The simple form is 'NAME' or "
+            "'NAME:FILTER', where FILTER has the same semantics as for --filter. "
+            "The option can be specified multiple times, repeating the same NAME "
+            "adds further filters. The file sets of different components may "
+            "overlap. "
+            "For parent/child components, per-component exclusions and coverage "
+            "thresholds use the TOML configuration file with [[component]] "
+            "tables (keys 'name', 'filter', 'exclude', 'components', "
+            "'fail-under-line', 'fail-under-branch', "
+            "'fail-under-condition-or-decision' and 'fail-under-function'). "
+            "A parent component aggregates the union of the files of its child "
+            "components, a file contained in several children is counted only "
+            "once. The component coverage is shown in the text and JSON summary "
+            "reports."
+        ),
+        action="append",
+        type=ComponentOption,
         default=[],
     ),
     GcovrConfigOption(

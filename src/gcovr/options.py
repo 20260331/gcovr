@@ -120,6 +120,159 @@ class NonEmptyFilterOption(FilterOption):
         super().__init__(regex, path_context)
 
 
+class ComponentOption:
+    r"""
+    Argparse/config type for a component group definition.
+
+    A component groups a (possibly overlapping) set of source files. Components
+    can be organized as parent and child components.
+
+    The simple string form (command line or ini style config file) is
+    ``NAME`` or ``NAME:FILTER``, e.g. ``--component core:src/core/``.
+    The option can be repeated, repeating the same NAME adds additional
+    filters.
+
+    The full featured form is only available in a TOML configuration file
+    as an array of tables with the config key ``component``:
+
+    .. code-block:: toml
+
+        [[component]]
+        name = "core"
+        filter = ["src/core/"]
+        exclude = ["src/core/legacy/"]
+        components = ["utils"]
+        fail-under-line = 90.0
+    """
+
+    def __init__(
+        self,
+        value: str | dict[str, Any],
+        path_context: str | None = None,
+    ) -> None:
+        """Initialize the ComponentOption instance."""
+        self.path_context = os.getcwd() if path_context is None else path_context
+        self.name = ""
+        self.include_filter = list[FilterOption]()
+        self.exclude_filter = list[NonEmptyFilterOption]()
+        self.components = list[str]()
+        self.fail_under_line = 0.0
+        self.fail_under_branch = 0.0
+        self.fail_under_condition_or_decision = 0.0
+        self.fail_under_function = 0.0
+
+        if isinstance(value, str):
+            self._parse_string(value)
+        elif isinstance(value, dict):
+            self._parse_dict(value)
+        else:
+            msg = f"Component definition must be a string or table, got {type(value).__name__}"
+            raise ArgumentTypeError(msg)
+
+        if not self.name:
+            msg = "Component definition requires a 'name'"
+            raise ArgumentTypeError(msg)
+
+    def __repr__(self) -> str:
+        """Get a string representation of the ComponentOption instance."""
+        return (
+            f"ComponentOption(name={self.name!r}, "
+            f"filters={[f.regex for f in self.include_filter]!r}, "
+            f"excludes={[f.regex for f in self.exclude_filter]!r}, "
+            f"components={self.components!r}, "
+            f"fail_under_line={self.fail_under_line!r}, "
+            f"fail_under_branch={self.fail_under_branch!r}, "
+            f"fail_under_condition_or_decision="
+            f"{self.fail_under_condition_or_decision!r}, "
+            f"fail_under_function={self.fail_under_function!r})"
+        )
+
+    def _parse_string(self, value: str) -> None:
+        """Parse the simple ``NAME`` or ``NAME:FILTER`` form."""
+        separators = [
+            index for index in (value.find(":"), value.find("=")) if index >= 0
+        ]
+        if separators:
+            index = min(separators)
+            self.name = value[:index].strip()
+            pattern = value[index + 1 :].strip()
+            if pattern:
+                self.include_filter.append(FilterOption(pattern, self.path_context))
+        else:
+            self.name = value.strip()
+
+    def _parse_dict(self, value: dict[str, Any]) -> None:
+        """Parse the TOML table form."""
+
+        def as_str_list(key: str, raw: Any) -> list[str]:
+            if isinstance(raw, str):
+                return [raw]
+            if isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+                return raw
+            msg = f"Component property {key!r} must be a string or list of strings"
+            raise ArgumentTypeError(msg)
+
+        for key, raw in value.items():
+            normalized = key.replace("-", "_")
+            if normalized == "name":
+                if not isinstance(raw, str):
+                    msg = "Component property 'name' must be a string"
+                    raise ArgumentTypeError(msg)
+                self.name = raw
+            elif normalized in ("filter", "filters"):
+                for pattern in as_str_list(key, raw):
+                    self.include_filter.append(FilterOption(pattern, self.path_context))
+            elif normalized in ("exclude", "excludes"):
+                for pattern in as_str_list(key, raw):
+                    self.exclude_filter.append(
+                        NonEmptyFilterOption(pattern, self.path_context)
+                    )
+            elif normalized in ("components", "children"):
+                self.components.extend(as_str_list(key, raw))
+            elif normalized in (
+                "fail_under_line",
+                "fail_under_branch",
+                "fail_under_condition_or_decision",
+                "fail_under_condition",
+                "fail_under_decision",
+                "fail_under_function",
+            ):
+                percentage = (
+                    check_percentage(raw)
+                    if isinstance(raw, str)
+                    else check_percentage(str(raw))
+                )
+                if normalized in ("fail_under_condition", "fail_under_decision"):
+                    normalized = "fail_under_condition_or_decision"
+                setattr(self, normalized, percentage)
+            else:
+                msg = f"Unknown component property {key!r}"
+                raise ArgumentTypeError(msg)
+
+    def merge(self, other: ComponentOption) -> None:
+        """Merge another definition of the same component into this one."""
+        self.include_filter.extend(other.include_filter)
+        self.exclude_filter.extend(other.exclude_filter)
+        for child in other.components:
+            if child not in self.components:
+                self.components.append(child)
+        for threshold in (
+            "fail_under_line",
+            "fail_under_branch",
+            "fail_under_condition_or_decision",
+            "fail_under_function",
+        ):
+            own = getattr(self, threshold)
+            foreign = getattr(other, threshold)
+            if own > 0.0 and foreign > 0.0 and own != foreign:
+                msg = (
+                    f"Conflicting {threshold.replace('_', '-')} values "
+                    f"{own} and {foreign} for component {self.name!r}"
+                )
+                raise ArgumentTypeError(msg)
+            setattr(self, threshold, max(own, foreign))
+
+
 class OutputOrDefault:
     """
     An output path that may be empty.

@@ -36,6 +36,9 @@ New features and notable changes:
 - Add :option:`--fail-under-condition-or-decision` with :option:`--fail-under-condition` and
   :option:`--fail-under-decision` as synonyms, change the key for the configuration file. (:issue:`1293`)
 - Add support for multiple metrics in one text report and add support for condition coverage. (:issue:`1302`)
+- Add optional component groups (:option:`--component`, config key ``component``) to report and
+  enforce coverage for overlapping file sets and hierarchical parent/child components. A file
+  contained in several child components is counted only once in the parent component.
 - Warn if a option is used which has no effect when processing tracefiles. (:issue:`1307`)
 
 Bug fixes and small improvements:

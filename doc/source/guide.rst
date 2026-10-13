@@ -16,6 +16,7 @@ This User Guide provides the following sections:
    output/index
    guide/multiple-outputs
    guide/filters
+   guide/components
    guide/configuration
    guide/exclusion-markers
    guide/timestamps
