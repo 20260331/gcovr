@@ -20,12 +20,13 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import platform
 import re
 from abc import abstractmethod
 from argparse import ArgumentParser, ArgumentTypeError, Namespace
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
 
 from .filter import AbsoluteFilter, Filter, RelativeFilter
 from .logging import LOGGER
@@ -129,6 +130,10 @@ class OutputOrDefault:
     - ``OutputOrDefault(path)``: use that path
     """
 
+    #: Output directories created while resolving output options.
+    #: Used to roll back the output locations of a failed transactional run.
+    created_directories: ClassVar[set[str]] = set()
+
     def __init__(self, value: str | None, basedir: str | None = None) -> None:
         """Initialize the OutputOrDefault instance."""
         self.value = value
@@ -166,14 +171,28 @@ class OutputOrDefault:
                     except OSError as e:
                         msg = f"Could not create output directory {self.value!r}: {e.strerror}"
                         raise ArgumentTypeError(msg) from None
+                    self.created_directories.add(os.path.normpath(value))
             else:
-                try:
-                    with open(value, "w", encoding="utf-8") as _:
-                        pass
-                except OSError as e:
-                    msg = f"Could not create output file {self.value!r}: {e.strerror}"
-                    raise ArgumentTypeError(msg) from None
-                os.unlink(value)
+                self._check_output_file(value)
+
+    def _check_output_file(self, value: str) -> None:
+        r"""Check that the output file can be (re)written without touching it."""
+        if os.path.lexists(value):
+            if os.path.islink(value) or os.path.isfile(value):
+                if os.access(value, os.W_OK):
+                    return
+                reason = "Permission denied"
+            else:
+                reason = "Is a directory"
+            msg = f"Could not write output file {self.value!r}: {reason}"
+            raise ArgumentTypeError(msg)
+
+        # The file does not exist, a writable parent directory is sufficient.
+        parent = os.path.dirname(value) or os.curdir
+        if not os.path.isdir(parent) or not os.access(parent, os.W_OK):
+            reason = os.strerror(errno.EACCES)
+            msg = f"Could not create output file {self.value!r}: {reason}"
+            raise ArgumentTypeError(msg)
 
     @classmethod
     def choose(

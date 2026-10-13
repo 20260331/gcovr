@@ -37,6 +37,9 @@ New features and notable changes:
   :option:`--fail-under-decision` as synonyms, change the key for the configuration file. (:issue:`1293`)
 - Add support for multiple metrics in one text report and add support for condition coverage. (:issue:`1302`)
 - Warn if a option is used which has no effect when processing tracefiles. (:issue:`1307`)
+- Add :option:`--output-transaction` to generate all reports in a private staging directory and publish
+  them only after every report was written successfully, restoring the output locations if a writer
+  fails or the process is interrupted.
 
 Bug fixes and small improvements:
 

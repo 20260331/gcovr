@@ -32,3 +32,17 @@ on the format is used.
 Note that :option:`--html-details<gcovr --html-details>` and
 :option:`--html-nested<gcovr --html-nested>` override any value of
 :option:`--html<gcovr --html>` if it is present.
+
+Transactional publishing
+-------------------------
+
+By default, each report is written directly to its destination.
+If one of several reports cannot be written, the output directory therefore
+contains a mix of previous reports and new, possibly incomplete reports.
+
+Use the :option:`gcovr --output-transaction` option to avoid this.
+All reports are then generated in a private staging directory and are moved
+to their destinations only after every report has been written successfully.
+If a report fails or the process is interrupted, the reports of this run are
+discarded and the output directories keep their state from before the run.
+Reports destined for stdout are buffered and emitted only on success.

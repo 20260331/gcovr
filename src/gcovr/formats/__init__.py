@@ -27,6 +27,7 @@ from ..filter import is_file_excluded
 from ..formats.base import BaseHandler
 from ..logging import LOGGER
 from ..options import GcovrConfigOption, Options, OutputOrDefault
+from ..output_transaction import output_transaction
 from ..utils import search_file
 
 # the handler
@@ -343,53 +344,66 @@ def write_reports(covdata: CoverageContainer, options: Options) -> None:
             )
         )
 
-    writer_errors = []
-    reports_were_written = False
-    default_output_used = False
-    default_output = OutputOrDefault(None) if options.output is None else options.output
+    with output_transaction(enabled=options.output_transaction) as transaction:
 
-    for output_choices, format_writer, on_no_output in generators:
-        output = OutputOrDefault.choose(output_choices, default=default_output)
-        if output is not None and output is default_output:
-            default_output_used = True
-            if not output.is_dir:
-                default_output = None
-        if output is not None:
-            try:
-                # Clear the properties before calling each writer
-                for data in covdata.traverse():
-                    data.properties.clear()
-                format_writer(covdata, output.abspath)
-            except RuntimeError as e:
-                writer_errors.append(str(e))
-            reports_were_written = True
-        else:
-            on_no_output()
+        def _redirect(output_path: str) -> str:
+            """Redirect an output into the private staging location."""
+            if transaction is None:
+                return output_path
+            if output_path == "-":
+                return transaction.capture_stdout()
+            return transaction.stage(output_path)
 
-    if not reports_were_written:
-        output_path = "-" if default_output is None else default_output.abspath
-        default_output = None
-        try:
-            TxtHandler(options).write_report(covdata, output_path)
-        except RuntimeError as e:
-            writer_errors.append(str(e))
-
-    if (
-        default_output is not None
-        and default_output.value is not None
-        and not default_output_used
-    ):
-        LOGGER.warning(
-            "--output=%s option was provided but not used.", repr(default_output.value)
+        writer_errors = []
+        reports_were_written = False
+        default_output_used = False
+        default_output = (
+            OutputOrDefault(None) if options.output is None else options.output
         )
 
-    if options.txt_summary:
-        try:
-            TxtHandler(options).write_summary_report(covdata, "-")
-        except RuntimeError as e:
-            writer_errors.append(str(e))
+        for output_choices, format_writer, on_no_output in generators:
+            output = OutputOrDefault.choose(output_choices, default=default_output)
+            if output is not None and output is default_output:
+                default_output_used = True
+                if not output.is_dir:
+                    default_output = None
+            if output is not None:
+                try:
+                    # Clear the properties before calling each writer
+                    for data in covdata.traverse():
+                        data.properties.clear()
+                    format_writer(covdata, _redirect(output.abspath))
+                except RuntimeError as e:
+                    writer_errors.append(str(e))
+                reports_were_written = True
+            else:
+                on_no_output()
 
-    if writer_errors:
-        errors_as_string = "\n".join(writer_errors)
-        msg = f"Not all output files were written successfully:\n{errors_as_string}"
-        raise RuntimeError(msg)
+        if not reports_were_written:
+            output_path = "-" if default_output is None else default_output.abspath
+            default_output = None
+            try:
+                TxtHandler(options).write_report(covdata, _redirect(output_path))
+            except RuntimeError as e:
+                writer_errors.append(str(e))
+
+        if (
+            default_output is not None
+            and default_output.value is not None
+            and not default_output_used
+        ):
+            LOGGER.warning(
+                "--output=%s option was provided but not used.",
+                repr(default_output.value),
+            )
+
+        if options.txt_summary:
+            try:
+                TxtHandler(options).write_summary_report(covdata, _redirect("-"))
+            except RuntimeError as e:
+                writer_errors.append(str(e))
+
+        if writer_errors:
+            errors_as_string = "\n".join(writer_errors)
+            msg = f"Not all output files were written successfully:\n{errors_as_string}"
+            raise RuntimeError(msg)

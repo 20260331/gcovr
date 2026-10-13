@@ -615,6 +615,19 @@ GCOVR_CONFIG_OPTIONS = [
         default=None,
     ),
     GcovrConfigOption(
+        "output_transaction",
+        ["--output-transaction"],
+        group="output_options",
+        action="store_true",
+        help=(
+            "Generate every report in a private staging directory and publish "
+            "the reports only after all of them have been written successfully. "
+            "If a report fails or the process is interrupted, the reports of this "
+            "run are discarded and existing reports and output directories are "
+            "left unchanged. Outputs destined for stdout are emitted only on success."
+        ),
+    ),
+    GcovrConfigOption(
         "show_decision",
         ["--decisions"],
         group="output_options",
