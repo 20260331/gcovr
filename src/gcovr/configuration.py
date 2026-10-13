@@ -615,6 +615,39 @@ GCOVR_CONFIG_OPTIONS = [
         default=None,
     ),
     GcovrConfigOption(
+        "source_bundle",
+        ["--source-bundle"],
+        group="output_options",
+        metavar="OUTPUT",
+        help=(
+            "Export a source bundle to OUTPUT. "
+            "The bundle contains the source files needed for the report "
+            "together with integrity information (hash digests). "
+            "It can be transferred together with the JSON tracefiles to a "
+            "machine without a source code checkout and used there with "
+            "--use-source-bundle to generate the annotated HTML reports."
+        ),
+        type=OutputOrDefault,
+        default=None,
+    ),
+    GcovrConfigOption(
+        "use_source_bundle",
+        ["--use-source-bundle"],
+        group="output_options",
+        metavar="INPUT",
+        help=(
+            "Read the source code for the annotated HTML reports from an "
+            "exported source bundle instead of from local files. "
+            "The integrity information of the bundle is verified and the "
+            "source files are read exclusively from the bundle, local files "
+            "with the same name are not opened. "
+            "Can only be used together with --json-add-tracefile or "
+            "--cobertura-add-tracefile."
+        ),
+        type=check_input_file,
+        default=None,
+    ),
+    GcovrConfigOption(
         "show_decision",
         ["--decisions"],
         group="output_options",

@@ -22,6 +22,7 @@ import re
 import sys
 import traceback
 from argparse import ArgumentError, ArgumentParser, Namespace
+from glob import glob
 from typing import Any
 
 # formats
@@ -44,6 +45,7 @@ from .formats.gcov.read import GcovProgram
 from .formats.gcov.workers import Workers
 from .logging import LOGGER, configure_logging, update_logging
 from .options import FilterOption
+from .source_bundle import SourceBundleReader, write_source_bundle
 from .version import __version__
 
 if sys.version_info >= (3, 11):
@@ -301,6 +303,23 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         if options.show_decision and options.json_compare:
             msg = "Decision coverage in json compare mode is not supported."
             raise RuntimeError(msg)
+        if options.source_bundle is not None and options.use_source_bundle is not None:
+            msg = (
+                "The options --source-bundle and --use-source-bundle can not "
+                "be used together."
+            )
+            raise RuntimeError(msg)
+        if options.source_bundle is not None and options.source_bundle.abspath == "-":
+            msg = "The option --source-bundle needs a filename, output to STDOUT is not supported."
+            raise RuntimeError(msg)
+        if options.use_source_bundle is not None and not (
+            options.json_tracefile or options.cobertura_tracefile
+        ):
+            msg = (
+                "The option --use-source-bundle can only be used together with "
+                "--json-add-tracefile or --cobertura-add-tracefile."
+            )
+            raise RuntimeError(msg)
         gcovr_formats.validate_options(options)
     except RuntimeError as exc:
         LOGGER.error("%s", str(exc))
@@ -415,6 +434,32 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
         )
         return EXIT_READ_ERROR
 
+    # Open the source bundle (if requested) before writing any report so that
+    # the HTML details are generated exclusively from the verified bundle.
+    options.source_bundle_reader = None
+    source_bundle_reader = None
+    if options.use_source_bundle is not None:
+        try:
+            tracefiles = []
+            for pattern in [
+                *options.json_tracefile,
+                *options.cobertura_tracefile,
+            ]:
+                for matched_tracefile in glob(pattern, recursive=True):
+                    tracefile = os.path.normpath(matched_tracefile)
+                    if tracefile not in tracefiles:
+                        tracefiles.append(tracefile)
+
+            source_bundle_reader = SourceBundleReader(options.use_source_bundle)
+            source_bundle_reader.verify_coverage_inputs(tracefiles)
+            options.source_bundle_reader = source_bundle_reader
+        except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+            LOGGER.error(
+                "Error occurred while reading the source bundle:\n%s",
+                traceback.format_exc(),
+            )
+            return EXIT_READ_ERROR
+
     LOGGER.info("Writing coverage report...")
     try:
         gcovr_formats.write_reports(covdata, options)
@@ -423,6 +468,45 @@ def main(args: list[str] | None = None) -> int:  # pylint: disable=too-many-retu
             "Error occurred while printing reports:\n%s", traceback.format_exc()
         )
         return EXIT_WRITE_ERROR
+    finally:
+        if source_bundle_reader is not None:
+            source_bundle_reader.close()
+
+    if options.source_bundle is not None:
+        LOGGER.info("Writing source bundle...")
+        try:
+            # Use the same machine independent filenames as the JSON
+            # tracefiles (root relative, with the JSON base path if set)
+            # so that the bundle entries match on the reporting machine.
+            sources = []
+            for filecov in covdata.filecov(recurse=True):
+                entry_name = filecov.presentable_filename(options.root_filter)
+                if options.json_base:
+                    entry_name = f"{options.json_base}/{entry_name}"
+                sources.append((entry_name, filecov.filename))
+            sources.sort(key=lambda source: source[0])
+
+            # Bind the bundle to the generated JSON intermediate report so
+            # that it can be verified on the reporting machine.
+            coverage_inputs = []
+            json_output = options.json
+            if (
+                json_output is not None
+                and json_output.abspath != "-"
+                and os.path.isfile(json_output.abspath)
+            ):
+                coverage_inputs.append(json_output.abspath)
+            write_source_bundle(
+                options.source_bundle.abspath,
+                sources,
+                coverage_inputs=coverage_inputs,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught  # noqa: BLE001
+            LOGGER.error(
+                "Error occurred while writing the source bundle:\n%s",
+                traceback.format_exc(),
+            )
+            return EXIT_WRITE_ERROR
 
     return get_exit_code(
         covdata,

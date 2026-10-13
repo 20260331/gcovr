@@ -49,6 +49,7 @@ class BaseHandler:
             "sort_reverse",
             "search_paths",
             "source_encoding",
+            "source_bundle_reader",
             "starting_dir",
             "include_filter",
             "exclude_filter",

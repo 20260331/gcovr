@@ -1043,32 +1043,45 @@ def get_file_data(
         )
         file_not_found = True
         try:
-            with open(
-                filecov.filename,
-                encoding=options.source_encoding,
-                errors="replace",
-            ) as source_file:
-                file_not_found = False
-                lines = formatter.highlighter_for_file(filecov.filename)(
-                    source_file.read()
+            source_bundle_reader = options.source_bundle_reader
+            if source_bundle_reader is not None:
+                # A source bundle is given, read exclusively from it.
+                # A local file with the same name must never be opened.
+                # The bundle uses the same machine independent (root
+                # relative) filename as the JSON tracefiles.
+                source_name = filecov.presentable_filename(options.root_filter)
+                if source_name.endswith("<stdin>"):
+                    # Code read from stdin has no real file on any machine.
+                    raise FileNotFoundError(filecov.filename)
+                source_content = source_bundle_reader.read_source(source_name).decode(
+                    options.source_encoding, errors="replace"
                 )
-                lineno = 0
-                for lineno, line in enumerate(lines, 1):
-                    file_data["source_lines"].append(
-                        source_row(
-                            lineno,
-                            line,
-                            get_linecovs(lineno),
-                            html_block_ids=options.html_block_ids,
-                        )
-                    )
-                if lineno < max_line_from_cdata:
-                    LOGGER.warning(
-                        "File %s has %d line(s) but coverage data has %d line(s).",
-                        filecov.filename,
+            else:
+                with open(
+                    filecov.filename,
+                    encoding=options.source_encoding,
+                    errors="replace",
+                ) as source_file:
+                    source_content = source_file.read()
+            file_not_found = False
+            lines = formatter.highlighter_for_file(filecov.filename)(source_content)
+            lineno = 0
+            for lineno, line in enumerate(lines, 1):
+                file_data["source_lines"].append(
+                    source_row(
                         lineno,
-                        max_line_from_cdata,
+                        line,
+                        get_linecovs(lineno),
+                        html_block_ids=options.html_block_ids,
                     )
+                )
+            if lineno < max_line_from_cdata:
+                LOGGER.warning(
+                    "File %s has %d line(s) but coverage data has %d line(s).",
+                    filecov.filename,
+                    lineno,
+                    max_line_from_cdata,
+                )
         except OSError as e:
             if filecov.filename.endswith("<stdin>"):
                 file_not_found = False
@@ -1076,6 +1089,24 @@ def get_file_data(
             else:
                 file_info = f"!!! Can't read file: {e.strerror} !!!"
                 LOGGER.warning("Can't read file: %s", e)
+            # Python ranges are exclusive. We want to iterate over all lines, including
+            # that last line. Thus, we have to add a +1 to include that line.
+            for lineno in range(1, max_line_from_cdata + 1):
+                file_data["source_lines"].append(
+                    source_row(
+                        lineno,
+                        file_info if lineno == 1 else "",
+                        get_linecovs(lineno),
+                        html_block_ids=options.html_block_ids,
+                    )
+                )
+        except KeyError:
+            # The file is not part of the source bundle.
+            file_info = "!!! Source file is not part of the source bundle !!!"
+            LOGGER.warning(
+                "Source file %s is not part of the source bundle.",
+                filecov.filename,
+            )
             # Python ranges are exclusive. We want to iterate over all lines, including
             # that last line. Thus, we have to add a +1 to include that line.
             for lineno in range(1, max_line_from_cdata + 1):

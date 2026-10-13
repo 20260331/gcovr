@@ -31,6 +31,12 @@ New features and notable changes:
     e.g all branches are excluded by patterns or comments. (:issue:`1305`)
 
 - Add compare mode for JSON, text and HTML reports. (:issue:`1240`, :issue:`1266`)
+- Add :option:`--source-bundle<gcovr --source-bundle>` to export the source files of
+  the report together with integrity information (SHA-256 digests) and
+  :option:`--use-source-bundle<gcovr --use-source-bundle>` to generate the annotated
+  HTML reports from this bundle on a machine without a source code checkout. The
+  source files are read exclusively from the verified bundle, local files with the
+  same name are not opened.
 - Stub missing line coverage for branches in LLVM source based code coverage format. (:issue:`1245`)
 - Add support for TOML files with :option:`--config` (:issue:`1258`)
 - Add :option:`--fail-under-condition-or-decision` with :option:`--fail-under-condition` and
